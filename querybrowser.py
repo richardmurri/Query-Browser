@@ -72,6 +72,11 @@ class Scene(QGraphicsScene):
         """Override scene to handle drag/drop."""
         QGraphicsScene.__init__(self, parent)
 
+    def addItem(self, widget):
+        QGraphicsScene.addItem(self, widget)
+        self.clearSelection()
+        widget.setSelected(True)
+
     def dragEnterEvent(self, event):
         return event.acceptProposedAction()
 
