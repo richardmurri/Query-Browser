@@ -54,11 +54,15 @@ class JoinList(QWidget):
         QListWidget.__init__(self, parent)
 
         vlayout = QVBoxLayout()
+        filter_layout = QHBoxLayout()
 
         self.edit = QLineEdit()
         self.list = QListWidget()
 
-        vlayout.addWidget(self.edit)
+        filter_layout.addWidget(QLabel('Filter:'))
+        filter_layout.addWidget(self.edit)
+
+        vlayout.addLayout(filter_layout)
         vlayout.addWidget(self.list)
 
         self.scene = scene
