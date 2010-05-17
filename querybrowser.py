@@ -2,9 +2,11 @@
 import sys
 
 from PyQt4.QtGui import *
-from PyQt4.QtCore import SIGNAL, QRectF, QObject, Qt
+from PyQt4.QtCore import SIGNAL, QRectF, QObject, Qt, QDataStream, QVariant
 
+import oursql
 
+conn = oursql.connect(host='localhost', user='root', db='veracity')
 
 class Table(QGraphicsRectItem):
 
@@ -45,6 +47,67 @@ class Table(QGraphicsRectItem):
         print 'click'
 
 
+class JoinList(QListWidget):
+
+    def __init__(self, scene, parent=None):
+        """Initialize object."""
+        QListWidget.__init__(self, parent)
+        self.scene = scene
+        self.setDragEnabled(True)
+
+        with conn.cursor() as cursor:
+            cursor.execute('show tables')
+            for row in cursor:
+                QListWidgetItem(row[0], self)
+
+        QObject.connect(self, SIGNAL('itemDoubleClicked(QListWidgetItem *)'), self.add)
+
+    def add(self, item):
+        """Add table to the query."""
+        self.scene.addItem(Table(item.text(), 0, 0))
+
+
+class Scene(QGraphicsScene):
+    def __init__(self, parent=None):
+        """Override scene to handle drag/drop."""
+        QGraphicsScene.__init__(self, parent)
+
+    def dragEnterEvent(self, event):
+        return event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        return event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        event.acceptProposedAction()
+        data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
+        text = self.decode_data(data)[0][0].toString()
+        self.addItem(Table(text, 0, 0))
+
+    def decode_data(self, bytearray):
+
+        data = []
+        item = {}
+
+        ds = QDataStream(bytearray)
+        while not ds.atEnd():
+
+            row = ds.readInt32()
+            column = ds.readInt32()
+
+            map_items = ds.readInt32()
+            for i in range(map_items):
+
+                key = ds.readInt32()
+
+                value = QVariant()
+                ds >> value
+                item[Qt.ItemDataRole(key)] = value
+
+            data.append(item)
+
+        return data
+
 
 class MainWindow(QMainWindow):
 
@@ -59,13 +122,15 @@ class MainWindow(QMainWindow):
         QObject.connect(quit_, SIGNAL('triggered()'), sys.exit)
 
         # graphics view
-        self.scene = QGraphicsScene()
+        self.scene = Scene()
         graph = QGraphicsView(self.scene)
 
         # table widget
         table = QTableWidget(1, 1)
         table.setItem(0, 0, QTableWidgetItem('hello'))
         table.setMinimumHeight(100)
+
+        joins = JoinList(self.scene)
 
         table_dock = QDockWidget('Results')
         table_dock.setWidget(table)
@@ -75,6 +140,7 @@ class MainWindow(QMainWindow):
         constraint_dock = QDockWidget('Constraints')
 
         join_dock = QDockWidget('Joins')
+        join_dock.setWidget(joins)
         # join_dock.setMinimumWidth(170)
 
         self.addDockWidget(Qt.BottomDockWidgetArea, table_dock)
@@ -89,16 +155,8 @@ class MainWindow(QMainWindow):
 
     def newquery(self):
         """Click File->New Query"""
-        table, ok = QInputDialog.getText(self, 'Table Name', 'Table Name')
-        if not ok:
-            return
-
-        #clear settings
         self.scene.clear()
         Table.alias_dict = {}
-
-        self.scene.addItem(Table(table, 0, 0))
-        self.scene.addItem(Table('testing_table', 100, 0))
 
 
 if __name__ == "__main__":
