@@ -47,20 +47,43 @@ class Table(QGraphicsRectItem):
         print 'click'
 
 
-class JoinList(QListWidget):
+class JoinList(QWidget):
 
     def __init__(self, scene, parent=None):
         """Initialize object."""
         QListWidget.__init__(self, parent)
+
+        vlayout = QVBoxLayout()
+
+        self.edit = QLineEdit()
+        self.list = QListWidget()
+
+        vlayout.addWidget(self.edit)
+        vlayout.addWidget(self.list)
+
         self.scene = scene
-        self.setDragEnabled(True)
+        self.list.setDragEnabled(True)
 
         with conn.cursor() as cursor:
             cursor.execute('show tables')
             for row in cursor:
-                QListWidgetItem(row[0], self)
+                QListWidgetItem(row[0], self.list)
 
-        QObject.connect(self, SIGNAL('itemDoubleClicked(QListWidgetItem *)'), self.add)
+
+        QObject.connect(self.edit, SIGNAL('textChanged(const QString &)'), self.filter)
+        QObject.connect(self.list, SIGNAL('itemDoubleClicked(QListWidgetItem *)'), self.add)
+
+        self.setLayout(vlayout)
+
+    def filter(self, text):
+        count = 0
+        while count < self.list.count() - 1:
+            item = self.list.item(count)
+            if text and text not in item.text():
+                item.setHidden(True)
+            else:
+                item.setHidden(False)
+            count += 1
 
     def add(self, item):
         """Add table to the query."""
