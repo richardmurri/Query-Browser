@@ -290,17 +290,21 @@ class MainWindow(QMainWindow):
         self.scene = Scene()
         graph = QGraphicsView(self.scene)
 
+        QObject.connect(self.scene, SIGNAL('selectionChanged()'), self.on_add)
+
         # table widget
-        table = QTableWidget(1, 1)
-        table.setItem(0, 0, QTableWidgetItem('hello'))
-        table.setMinimumHeight(100)
+        self.table = QTableWidget(1, 1)
+        self.table.setMinimumHeight(100)
 
         joins = JoinList(self.scene)
 
         table_dock = QDockWidget('Results')
-        table_dock.setWidget(table)
+        table_dock.setWidget(self.table)
 
         query_dock = QDockWidget('Query')
+        self.text_edit = QPlainTextEdit()
+        self.text_edit.setReadOnly(True)
+        query_dock.setWidget(self.text_edit)
 
         constraint_dock = QDockWidget('Constraints')
 
@@ -323,6 +327,30 @@ class MainWindow(QMainWindow):
         self.scene.clear()
         Table.alias_dict = {}
 
+    def query(self, query):
+
+        # set results
+        with conn.cursor() as cursor:
+            cursor.execute('{0} limit 100'.format(query))
+            column_size = len(cursor.description)
+            self.table.clear()
+            self.table.setColumnCount(column_size)
+            self.table.setRowCount(100)
+            self.table.setHorizontalHeaderLabels([x[0] for x in cursor.description])
+
+            row = -1
+            for row, result in enumerate(cursor):
+                for column, data in enumerate(result):
+                    self.table.setItem(row, column, QTableWidgetItem(str(data)))
+            self.table.setRowCount(row + 1)
+        self.text_edit.setPlainText(query)
+
+    def on_add(self):
+        items = self.scene.selectedItems()
+        if len(items) == 0:
+            return
+        name = items[0].name
+        self.query('select * from {0}'.format(name))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
