@@ -3,10 +3,11 @@ import sys, random, math, time
 
 from PyQt4.QtGui import *
 from PyQt4.QtCore import SIGNAL, QRectF, QObject, Qt, QDataStream, QVariant, QTimer
+from sqlalchemy import create_engine, MetaData, select
 
-import oursql
-
-conn = oursql.connect(host='localhost', user='root', db='veracity')
+engine = create_engine('mysql://root@localhost/veracity', pool_recycle=3600)
+meta = MetaData()
+meta.reflect(bind=engine)
 
 class Vector(object):
     def __init__(self, x, y):
@@ -195,11 +196,8 @@ class JoinList(QWidget):
         self.scene = scene
         self.list.setDragEnabled(True)
 
-        with conn.cursor() as cursor:
-            cursor.execute('show tables')
-            for row in cursor:
-                QListWidgetItem(row[0], self.list)
-
+        for table in sorted(meta.tables.keys()):
+            QListWidgetItem(table, self.list)
 
         QObject.connect(self.edit, SIGNAL('textChanged(const QString &)'), self.filter)
         QObject.connect(self.list, SIGNAL('itemDoubleClicked(QListWidgetItem *)'), self.add)
@@ -327,30 +325,47 @@ class MainWindow(QMainWindow):
         self.scene.clear()
         Table.alias_dict = {}
 
-    def query(self, query):
+    def query(self, table):
 
         # set results
-        with conn.cursor() as cursor:
-            cursor.execute('{0} limit 100'.format(query))
-            column_size = len(cursor.description)
-            self.table.clear()
-            self.table.setColumnCount(column_size)
-            self.table.setRowCount(100)
-            self.table.setHorizontalHeaderLabels([x[0] for x in cursor.description])
+        query = select([table]).limit(100)
+        results = engine.execute(query)
+        keys = results.keys()
+        self.table.clear()
+        self.table.setColumnCount(len(keys))
+        self.table.setRowCount(0)
 
-            row = -1
-            for row, result in enumerate(cursor):
-                for column, data in enumerate(result):
-                    self.table.setItem(row, column, QTableWidgetItem(str(data)))
+        cols_set = False
+        row = -1
+        for row, result in enumerate(results):
             self.table.setRowCount(row + 1)
-        self.text_edit.setPlainText(query)
+            for column, data in enumerate(result):
+                self.table.setItem(row, column, QTableWidgetItem(str(data)))
+
+        if not cols_set:
+            self.table.setHorizontalHeaderLabels(list(keys))
+
+        self.text_edit.setPlainText(str(query))
 
     def on_add(self):
         items = self.scene.selectedItems()
         if len(items) == 0:
             return
         name = items[0].name
-        self.query('select * from {0}'.format(name))
+
+        table = meta.tables[name]
+        self.query(table)
+
+        connects_to = (fk.column.table.name for fk in table.foreign_keys)
+        connected_to = (t.name for t in meta.tables.itervalues()
+                        for fk in t.foreign_keys if fk.column.table is table)
+        fks = set()
+        fks.update(connects_to)
+        fks.update(connected_to)
+        fks = list(fks)
+        fks.sort()
+        print fks
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
