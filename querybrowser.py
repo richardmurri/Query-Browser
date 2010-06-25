@@ -2,14 +2,19 @@
 import sys, random, math, time
 
 from PyQt4.QtGui import *
-from PyQt4.QtCore import SIGNAL, QRectF, QObject, Qt, QDataStream, QVariant, QTimer
+from PyQt4.QtCore import (SIGNAL, QObject, Qt, QDataStream, QVariant, QTimer,
+                          QPointF)
 from sqlalchemy import create_engine, MetaData, select
 
 engine = create_engine('mysql://root@localhost/veracity', pool_recycle=3600)
 meta = MetaData()
 meta.reflect(bind=engine)
 
+zoom = 40
+
 class Vector(object):
+    """Basic vector arithmetic helper."""
+
     def __init__(self, x, y):
         self.x = x
         self.y = y
@@ -36,25 +41,67 @@ class Vector(object):
     def random(cls):
         return cls(random.random(), random.random())
 
-class Spring(object):
-    springs = []
 
-    def __init__(self, point1, point2, length=1.0, constant=500.0):
-        self.point1 = point1
-        self.point2 = point2
-        self.length = length
-        self.constant = constant
-        self.springs.append(self)
+class Spring(QGraphicsLineItem):
+    instances = []
+    constant = 100.0
+    length = 1.0
+
+    def __init__(self, table1, table2):
+        self.table1 = table1
+        self.table2 = table2
+        table1.springs.append(self)
+        table2.springs.append(self)
+        self.instances.append(self)
+
+        QGraphicsLineItem.__init__(self)
+
+        pen = QPen()
+        pen.setWidth(2)
+
+        points = QPolygonF()
+        for poly in (QPointF(7,0), QPointF(-7,7), QPointF(-5,2), QPointF(-11,2),
+                     QPointF(-11,-2), QPointF(-5,-2), QPointF(-7,-7)):
+            points.append(poly)
+
+        self.arrow = QGraphicsPolygonItem(points, self)
+        self.arrow.setBrush(Qt.cyan)
+        self.arrow.setPen(Qt.darkCyan)
+
+        self.setPen(pen)
+        self.update_spring()
+        self.setZValue(-1)
+
+    def update_spring(self):
+        point1 = self.table1.point
+        point2 = self.table2.point
+
+        x1 = point1.x * zoom
+        y1 = point1.y * zoom
+        x2 = point2.x * zoom
+        y2 = point2.y * zoom
+        self.setLine(x1, y1, x2, y2)
+
+        rise = y2 - y1
+        run = x2 - x1
+        self.arrow.setX((run / 2)+ x1)
+        self.arrow.setY((rise / 2)+ y1)
+
+        tan = math.degrees(math.atan2(rise, run))
+        self.arrow.setRotation(tan)
+
+
+
 
     @classmethod
     def apply_hookes_law(cls):
-        for spring in cls.springs:
-            d = spring.point2.point.subtract(spring.point1.point)
+        for spring in cls.instances:
+            d = spring.table2.point.subtract(spring.table1.point)
             displacement = spring.length - d.magnitude()
             direction = d.normalize()
 
-            spring.point1.apply_force(direction.multiply(spring.constant * displacement * -0.5))
-            spring.point2.apply_force(direction.multiply(spring.constant * displacement * 0.5))
+            spring.table1.apply_force(direction.multiply(spring.constant * displacement * -0.5))
+            spring.table2.apply_force(direction.multiply(spring.constant * displacement * 0.5))
 
 
 timer = QTimer()
@@ -64,14 +111,14 @@ def start():
         return
 
     def run1():
-        points = Table.points
+        points = Table.instances
         Table.apply_coulombs_law()
         Spring.apply_hookes_law()
         Table.update_velocity(0.05)
         Table.update_position(0.05)
 
         k = 0.0
-        for point in Table.points:
+        for point in Table.instances:
             speed = point.velocity.magnitude()
             k += speed * speed
 
@@ -86,10 +133,9 @@ def start():
 class Table(QGraphicsRectItem):
 
     alias_dict = {}
-    points = []
-    repulsion = 100.0
+    instances = []
+    repulsion = 600.0
     damping = 0.5
-    zoom = 40
 
     def __init__(self, name, vector, mass=1.0):
         """Documentation here"""
@@ -100,6 +146,11 @@ class Table(QGraphicsRectItem):
         text = QGraphicsSimpleTextItem('{0} as {1}'.format(name, self.alias))
         width = text.boundingRect().width()
         QGraphicsRectItem.__init__(self, x, y, width + 10, 22)
+
+        self.setBrush(Qt.cyan)
+        self.setPen(Qt.darkCyan)
+
+
         self.width = width + 10
         self.height = 22
         self.setFlag(self.ItemIsMovable, True)
@@ -113,7 +164,8 @@ class Table(QGraphicsRectItem):
         self.mass = mass
         self.velocity = Vector(0, 0)
         self.force = Vector(0, 0)
-        self.points.append(self)
+        self.instances.append(self)
+        self.springs = []
 
     def apply_force(self, force):
         af = force.divide(self.mass)
@@ -121,39 +173,44 @@ class Table(QGraphicsRectItem):
 
     @classmethod
     def apply_coulombs_law(cls):
-        for point1 in cls.points:
-            for point2 in cls.points:
-                if point1 is not point2:
-                    d = point1.point.subtract(point2.point)
-                    distance = d.magnitude() + 1.0
-                    direction = d.normalize()
+        for table1 in cls.instances:
+            for table2 in cls.instances:
+                if table1 is table2:
+                    continue
+                d = table1.point.subtract(table2.point)
+                distance = d.magnitude() + 1.0
+                direction = d.normalize()
 
-                    af = direction.multiply(cls.repulsion)
-                    af2 = af.divide(distance * distance * 0.5)
+                af = direction.multiply(cls.repulsion)
+                af2 = af.divide(distance * distance * 0.5)
 
-                    point1.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * 0.5))
-                    point2.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * -0.5))
+                table1.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * 0.5))
+                table2.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * -0.5))
 
     @classmethod
     def update_velocity(cls, timestep):
-        for point in cls.points:
-            point.velocity = point.velocity.add(point.force.multiply(timestep)).multiply(cls.damping)
-            point.force = Vector(0, 0)
+        for table in cls.instances:
+            table.velocity = table.velocity.add(table.force.multiply(timestep)).multiply(cls.damping)
+            table.force = Vector(0, 0)
 
     @classmethod
     def update_position(cls, timestep):
-        for point in cls.points:
-            point.point = point.point.add(point.velocity.multiply(timestep))
-            point.setX(point.point.x)
-            point.setY(point.point.y)
+        for table in cls.instances:
+            table.point = table.point.add(table.velocity.multiply(timestep))
+            table.setX(table.point.x)
+            table.setY(table.point.y)
+
+    def update_springs(self):
+        for spring in self.springs:
+            spring.update_spring()
 
     def setX(self, val):
-        QGraphicsRectItem.setX(self, val * self.zoom - self.width / 2)
-        items = self.collidingItems(Qt.IntersectsItemShape)
-        items = (x for x in items if not isinstance(x, QGraphicsSimpleTextItem))
+        QGraphicsRectItem.setX(self, val * zoom - (self.width / 2))
+        self.update_springs()
 
     def setY(self, val):
-        QGraphicsRectItem.setY(self, val * self.zoom - self.height / 2)
+        QGraphicsRectItem.setY(self, val * zoom - (self.height / 2))
+        self.update_springs()
 
     @property
     def alias(self):
@@ -166,10 +223,6 @@ class Table(QGraphicsRectItem):
                 self._alias += str(num)
             self.alias_dict[letters] += 1
         return self._alias
-
-    @property
-    def joins(self):
-        return ['party_role', 'party_group', 'person']
 
     def mousePressEvent(self, event):
         print 'click'
@@ -218,6 +271,7 @@ class JoinList(QWidget):
         """Add table to the query."""
         self.scene.addItem(Table(item.text(), Vector.random()))
 
+
 class Scene(QGraphicsScene):
 
 
@@ -244,7 +298,8 @@ class Scene(QGraphicsScene):
         item = Table(text, Vector.random())
         items = self.selectedItems()
         if items:
-            Spring(items[0], item)
+            spring = Spring(items[0], item)
+            QGraphicsScene.addItem(self, spring)
         self.addItem(item)
 
     def decode_data(self, bytearray):
@@ -287,28 +342,27 @@ class MainWindow(QMainWindow):
         # graphics view
         self.scene = Scene()
         graph = QGraphicsView(self.scene)
-
         QObject.connect(self.scene, SIGNAL('selectionChanged()'), self.on_add)
 
-        # table widget
+        # table dock
         self.table = QTableWidget(1, 1)
         self.table.setMinimumHeight(100)
-
-        joins = JoinList(self.scene)
-
         table_dock = QDockWidget('Results')
         table_dock.setWidget(self.table)
 
+        # query dock
         query_dock = QDockWidget('Query')
         self.text_edit = QPlainTextEdit()
         self.text_edit.setReadOnly(True)
         query_dock.setWidget(self.text_edit)
 
+        # constraint dock
         constraint_dock = QDockWidget('Constraints')
 
+        # join dock
+        joins = JoinList(self.scene)
         join_dock = QDockWidget('Joins')
         join_dock.setWidget(joins)
-        # join_dock.setMinimumWidth(170)
 
         self.addDockWidget(Qt.BottomDockWidgetArea, table_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, query_dock)
