@@ -227,122 +227,6 @@ class Table(QGraphicsRectItem):
         print 'click'
 
 
-class ListFilter(object):
-
-    def __init__(self, list_component, filters):
-        """Filtering of a list component."""
-        self.list = list_component
-        self.filters = filters
-        for f in filters:
-            f.filter_changed.connect(self.filter)
-
-    def filter(self):
-        """Filter the configured list."""
-        count = 0
-        while count < self.list.count():
-            item = self.list.item(count)
-            text = item.text()
-
-            visible = True
-            for f in self.filters:
-                visible = visible and not f.filter_item(text)
-
-            item.setHidden(not visible)
-            count += 1
-
-
-class Filter(QWidget):
-    filter_changed = pyqtSignal()
-
-class TextFilter(Filter):
-
-    def __init__(self):
-        """Automatic filtering of a list."""
-        QWidget.__init__(self)
-        hbox = QHBoxLayout()
-        hbox.setContentsMargins(0, 0, 0, 0)
-        self.edit = QLineEdit()
-        self.label = QLabel('Filter:')
-        hbox.addWidget(self.label)
-        hbox.addWidget(self.edit)
-        self.setLayout(hbox)
-
-        self.edit.textChanged.connect(self.filter_changed)
-
-    def filter_item(self, list_item):
-        text = self.edit.text()
-        if text is None:
-            return False
-        return text not in list_item
-
-
-class FkFilter(Filter):
-
-    def __init__(self):
-        """Foreign key filtering of a list."""
-        QWidget.__init__(self)
-
-        hbox = QHBoxLayout()
-        hbox.setContentsMargins(0, 0, 0, 0)
-        self.checkbox = QCheckBox()
-        self.edit = QLineEdit()
-        self.label = QLabel('Fk Filter:')
-        hbox.addWidget(self.checkbox)
-        hbox.addWidget(self.label)
-        hbox.addWidget(self.edit)
-        self.setLayout(hbox)
-        self.edit.setDisabled(True)
-        self.label.setDisabled(True)
-
-        # when the text is changed, run the filter
-        self.edit.textChanged.connect(self.filter_changed)
-        self.checkbox.stateChanged.connect(self.set_disabled)
-
-    def filter_item(self, list_item):
-        text = self.edit.text()
-        if self.checkbox.isChecked():
-            return text not in list_item
-        else:
-            return False
-
-    def set_disabled(self, enabled):
-        self.edit.setDisabled(not enabled)
-        self.label.setDisabled(not enabled)
-        self.filter_changed.emit()
-
-
-class JoinList(QWidget):
-
-    def __init__(self):
-        """Initialize object."""
-        QWidget.__init__(self)
-
-        # create list
-        self.list = QListWidget()
-        self.list.setDragEnabled(True)
-
-        # add filters
-        text_filter = TextFilter()
-        fk_filter = FkFilter()
-
-        self.list_filter = ListFilter(self.list, [text_filter, fk_filter])
-
-        # set vertical layout
-        vlayout = QVBoxLayout()
-        vlayout.addWidget(text_filter)
-        vlayout.addWidget(self.list)
-        vlayout.addWidget(fk_filter)
-
-        for table in sorted(meta.tables.keys()):
-            item = QListWidgetItem(table, self.list)
-
-        self.setLayout(vlayout)
-
-    # def add(self, item):
-    #     """Add table to the query."""
-    #     self.scene.addItem(Table(item.text(), Vector.random()))
-
-
 class Scene(QGraphicsScene):
 
 
@@ -431,7 +315,8 @@ class MainWindow(QMainWindow):
         constraint_dock = QDockWidget('Constraints')
 
         # join dock
-        joins = JoinList()
+        items = (QListWidgetItem(x) for x in meta.tables.keys())
+        joins = JoinList(items)
         join_dock = QDockWidget('Joins')
         join_dock.setWidget(joins)
 
