@@ -6,6 +6,9 @@ from PyQt4.QtCore import (SIGNAL, QObject, Qt, QDataStream, QVariant, QTimer,
                           QPointF, pyqtSignal)
 from sqlalchemy import create_engine, MetaData, select
 
+from joinlist import JoinList
+from scene import Scene
+
 engine = create_engine('mysql://root@localhost/veracity', pool_recycle=3600)
 meta = MetaData()
 meta.reflect(bind=engine)
@@ -45,9 +48,9 @@ class MainWindow(QMainWindow):
 
         # join dock
         items = (QListWidgetItem(x) for x in meta.tables.keys())
-        joins = JoinList(items)
+        self.joins = JoinList(items, meta)
         join_dock = QDockWidget('Joins')
-        join_dock.setWidget(joins)
+        join_dock.setWidget(self.joins)
 
         self.addDockWidget(Qt.BottomDockWidgetArea, table_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, query_dock)
@@ -58,6 +61,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.LeftDockWidgetArea, join_dock)
 
         self.setCentralWidget(graph)
+
 
     def newquery(self):
         """Click File->New Query"""
@@ -94,16 +98,7 @@ class MainWindow(QMainWindow):
 
         table = meta.tables[name]
         self.query(table)
-
-        connects_to = (fk.column.table.name for fk in table.foreign_keys)
-        connected_to = (t.name for t in meta.tables.itervalues()
-                        for fk in t.foreign_keys if fk.column.table is table)
-        fks = set()
-        fks.update(connects_to)
-        fks.update(connected_to)
-        fks = list(fks)
-        fks.sort()
-        print fks
+        self.joins.set_table(name)
 
 
 if __name__ == "__main__":

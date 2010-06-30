@@ -65,9 +65,11 @@ class TextFilter(Filter):
 class FkFilter(Filter):
     """Handle filtering of a list by matching foreign keys of the input."""
 
-    def __init__(self):
+    def __init__(self, meta):
         """Create qt widget and attach handlers."""
         QWidget.__init__(self)
+
+        self.meta = meta
 
         hbox = QHBoxLayout()
         hbox.setContentsMargins(0, 0, 0, 0)
@@ -78,26 +80,42 @@ class FkFilter(Filter):
         hbox.addWidget(self.label)
         hbox.addWidget(self.edit)
         self.setLayout(hbox)
-        self.edit.setDisabled(True)
-        self.label.setDisabled(True)
+        self.checkbox.setChecked(True)
+        # self.checkbox.setTristate(True)
 
         # when the text is changed, run the filter
         self.edit.textChanged.connect(self.filter_changed)
-        self.checkbox.stateChanged.connect(self.set_disabled)
+        self.edit.textChanged.connect(self.reset)
+        self.checkbox.stateChanged.connect(self.filter_changed)
+
+    def reset(self):
+        if hasattr(self, '_fks'):
+            del self._fks
+        self.filter_changed.emit()
 
     def filter_item(self, list_item):
         """Filter an item if it isn't a foreign key of the input."""
-        text = self.edit.text()
         if self.checkbox.isChecked():
-            return text not in list_item
+            return str(list_item) not in self.fks
         else:
             return False
 
-    def set_disabled(self, enabled):
-        """Disable/Enable the filter."""
-        self.edit.setDisabled(not enabled)
-        self.label.setDisabled(not enabled)
-        self.filter_changed.emit()
+    @property
+    def fks(self):
+        if not hasattr(self, '_fks'):
+            name = str(self.edit.text())
+            table = self.meta.tables.get(name)
+            if table is not None:
+                connects_to = (fk.column.table.name for fk in table.foreign_keys)
+                connected_to = (t.name for t in self.meta.tables.itervalues()
+                                for fk in t.foreign_keys if fk.column.table is table)
+                fks = set()
+                fks.update(connects_to)
+                fks.update(connected_to)
+                self._fks = fks
+            else:
+                self._fks = set(self.meta.tables.keys())
+        return self._fks
 
 
 class JoinList(QWidget):
@@ -108,7 +126,7 @@ class JoinList(QWidget):
 
     """
 
-    def __init__(self, items):
+    def __init__(self, items, meta):
         """Initialize object."""
         QWidget.__init__(self)
 
@@ -117,19 +135,23 @@ class JoinList(QWidget):
         self.list.setDragEnabled(True)
 
         # add filters
-        text_filter = TextFilter()
-        fk_filter = FkFilter()
+        self.text_filter = TextFilter()
+        self.fk_filter = FkFilter(meta)
 
-        self.list_filter = ListFilter(self.list, [text_filter, fk_filter])
+        self.list_filter = ListFilter(self.list, [self.text_filter, self.fk_filter])
 
         # set vertical layout
         vlayout = QVBoxLayout()
-        vlayout.addWidget(text_filter)
+        vlayout.addWidget(self.text_filter)
         vlayout.addWidget(self.list)
-        vlayout.addWidget(fk_filter)
+        vlayout.addWidget(self.fk_filter)
 
         for item in reversed(sorted(items)):
             self.list.insertItem(0, item)
 
         self.setLayout(vlayout)
+
+    def set_table(self, table):
+        self.text_filter.edit.setText('')
+        self.fk_filter.edit.setText(table)
 
