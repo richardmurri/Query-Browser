@@ -68,10 +68,30 @@ class MainWindow(QMainWindow):
         self.scene.clear()
         Table.alias_dict = {}
 
+    def join(self, query, table):
+        for child in table.children:
+            query = query.join(child.table)
+            query = self.join(query, child)
+        return query
     def query(self, table):
 
-        # set results
-        query = select([table]).limit(100)
+        selected = self.scene.selectedItems()
+        if len(selected) == 0:
+            return
+
+        col_lists = (x.table.c for x in selected)
+        cols = [y for x in col_lists for y in x]
+
+        parent = selected[0]
+        while parent:
+            found = parent
+            parent = getattr(parent, 'base_table', None)
+
+        base = found.table
+        # query = select(cols, constraints, from_obj=base)
+        query = select(cols, constraints, from_obj=self.join(base, found))
+        query = query.limit(100)
+
         results = engine.execute(query)
         keys = results.keys()
         self.table.clear()

@@ -2,10 +2,13 @@ import random, math
 
 from PyQt4.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
                          QGraphicsPolygonItem, QGraphicsSimpleTextItem,
-                         QGraphicsScene)
-from PyQt4.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer
+                         QGraphicsScene, QGraphicsItem)
+from PyQt4.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, pyqtSignal
 
 
+
+
+#scene zoom factor (deals with spring graph layout)
 zoom = 40
 
 class Vector(object):
@@ -37,8 +40,9 @@ class Vector(object):
     def random(cls):
         return cls(random.random(), random.random())
 
-
 class Spring(QGraphicsLineItem):
+    """ A spring represents a connection (fk) between two tables."""
+
     instances = []
     constant = 100.0
     length = 1.0
@@ -46,8 +50,10 @@ class Spring(QGraphicsLineItem):
     def __init__(self, table1, table2):
         self.table1 = table1
         self.table2 = table2
-        table1.springs.append(self)
-        table2.springs.append(self)
+        table2.base_table = table1
+        table1.children.append(table2)
+        table1.table_move.connect(self.update_spring)
+        table2.table_move.connect(self.update_spring)
         self.instances.append(self)
 
         QGraphicsLineItem.__init__(self)
@@ -63,6 +69,7 @@ class Spring(QGraphicsLineItem):
         self.arrow = QGraphicsPolygonItem(points, self)
         self.arrow.setBrush(Qt.cyan)
         self.arrow.setPen(Qt.darkCyan)
+        self.arrow.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
 
         self.setPen(pen)
         self.update_spring()
@@ -85,9 +92,6 @@ class Spring(QGraphicsLineItem):
 
         tan = math.degrees(math.atan2(rise, run))
         self.arrow.setRotation(tan)
-
-
-
 
     @classmethod
     def apply_hookes_law(cls):
@@ -125,6 +129,11 @@ def start():
     timer.start(10)
 
 
+class Mediator(QObject):
+    """Only used for signals because QGraphicsRect doesn't inherit from QObject."""
+    table_move = pyqtSignal()
+
+
 class Table(QGraphicsRectItem):
 
     alias_dict = {}
@@ -132,9 +141,14 @@ class Table(QGraphicsRectItem):
     repulsion = 600.0
     damping = 0.5
 
+    @property
+    def table_move(self):
+        return self._mediator.table_move
+
     def __init__(self, name, vector, mass=1.0):
         """Documentation here"""
         self.name = str(name)
+        self._mediator = Mediator()
 
         # layout widget
         x, y = vector.x, vector.y
@@ -142,13 +156,16 @@ class Table(QGraphicsRectItem):
         width = text.boundingRect().width()
         QGraphicsRectItem.__init__(self, x, y, width + 10, 22)
 
+        table = meta.tables[str(name)]
+        self.table = table.alias(self.alias)
+        self.base_table = None
+        self.children = []
+
         self.setBrush(Qt.cyan)
         self.setPen(Qt.darkCyan)
 
-
         self.width = width + 10
         self.height = 22
-        self.setFlag(self.ItemIsMovable, True)
         self.setFlag(self.ItemIsSelectable, True)
 
         text.setParentItem(self)
@@ -160,7 +177,6 @@ class Table(QGraphicsRectItem):
         self.velocity = Vector(0, 0)
         self.force = Vector(0, 0)
         self.instances.append(self)
-        self.springs = []
 
     def apply_force(self, force):
         af = force.divide(self.mass)
@@ -195,17 +211,13 @@ class Table(QGraphicsRectItem):
             table.setX(table.point.x)
             table.setY(table.point.y)
 
-    def update_springs(self):
-        for spring in self.springs:
-            spring.update_spring()
-
     def setX(self, val):
         QGraphicsRectItem.setX(self, val * zoom - (self.width / 2))
-        self.update_springs()
+        self.table_move.emit()
 
     def setY(self, val):
         QGraphicsRectItem.setY(self, val * zoom - (self.height / 2))
-        self.update_springs()
+        self.table_move.emit()
 
     @property
     def alias(self):
@@ -222,9 +234,22 @@ class Table(QGraphicsRectItem):
     def mousePressEvent(self, event):
         print 'click'
 
+    # def mouseMoveEvent(self, event):
+    #     pos = event.scenePos()
+    #     mouse_pos = event.pos()
+    #     print mouse_pos.x(), mouse_pos.y()
+    #     self.point.x = pos.x() / zoom
+    #     self.point.y = pos.y() / zoom
+    #     self.table_move.emit()
+    #     return QGraphicsRectItem.mouseMoveEvent(self, event)
+
+    def itemChange(self, change, value):
+
+
+        # print change, value
+        return QGraphicsRectItem.itemChange(self, change, value)
 
 class Scene(QGraphicsScene):
-
 
     def __init__(self, parent=None):
         """Override scene to handle drag/drop."""
@@ -243,6 +268,7 @@ class Scene(QGraphicsScene):
         return event.acceptProposedAction()
 
     def dropEvent(self, event):
+        print 'drop'
         event.acceptProposedAction()
         data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
         text = self.decode_data(data)[0][0].toString()
@@ -276,3 +302,5 @@ class Scene(QGraphicsScene):
             data.append(item)
 
         return data
+
+from querybrowser import meta
