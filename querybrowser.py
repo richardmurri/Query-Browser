@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
 
         # constraint dock
         constraint_dock = QDockWidget('Constraints')
+        self.constraints = QPlainTextEdit()
+        constraint_dock.setWidget(self.constraints)
 
         # join dock
         items = (QListWidgetItem(x) for x in meta.tables.keys())
@@ -88,6 +90,9 @@ class MainWindow(QMainWindow):
             parent = getattr(parent, 'base_table', None)
 
         base = found.table
+
+        constraints = self.constraints.toPlainText() or ''
+
         # query = select(cols, constraints, from_obj=base)
         query = select(cols, constraints, from_obj=self.join(base, found))
         query = query.limit(100)
