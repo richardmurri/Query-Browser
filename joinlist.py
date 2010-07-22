@@ -1,11 +1,11 @@
-from PyQt4.QtGui import (QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel,
+from PySide.QtGui import (QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel,
                          QCheckBox, QListWidget, QListWidgetItem)
-from PyQt4.QtCore import pyqtSignal
+from PySide.QtCore import Signal
 
 
 class Filter(QWidget):
     """Abstract base class for filters."""
-    filter_changed = pyqtSignal()
+    filter_changed = Signal()
 
 
 class ListFilter(object):
@@ -56,14 +56,16 @@ class TextFilter(Filter):
 
     def filter_item(self, list_item):
         """Filter an item if it doesn't include a subsequence of the text."""
-        text = self.edit.text()
-        if text is None:
+        text = str(self.edit.text())
+        if text is '':
             return False
-        return text not in list_item
+        return text not in str(list_item)
 
 
-class FkFilter(Filter):
+class FkFilter(QWidget):
     """Handle filtering of a list by matching foreign keys of the input."""
+
+    filter_changed = Signal()
 
     def __init__(self, meta):
         """Create qt widget and attach handlers."""
@@ -96,11 +98,10 @@ class FkFilter(Filter):
     def filter_item(self, list_item):
         """Filter an item if it isn't a foreign key of the input."""
         if self.checkbox.isChecked():
-            return str(list_item) not in self.fks
+            return str(list_item) not in self.fks()
         else:
             return False
 
-    @property
     def fks(self):
         if not hasattr(self, '_fks'):
             name = str(self.edit.text())
@@ -140,18 +141,18 @@ class JoinList(QWidget):
 
         self.list_filter = ListFilter(self.list, [self.text_filter, self.fk_filter])
 
-        # set vertical layout
+        # # set vertical layout
         vlayout = QVBoxLayout()
         vlayout.addWidget(self.text_filter)
         vlayout.addWidget(self.list)
         vlayout.addWidget(self.fk_filter)
 
-        for item in reversed(sorted(items)):
+        for item in reversed([QListWidgetItem(x) for x in sorted(items)]):
             self.list.insertItem(0, item)
 
         self.setLayout(vlayout)
 
     def set_table(self, table):
         self.text_filter.edit.setText('')
-        self.fk_filter.edit.setText(table)
+        self.fk_filter.edit.setText(str(table))
 

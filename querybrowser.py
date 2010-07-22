@@ -1,10 +1,9 @@
 
 import sys
 
-from PyQt4.QtGui import *
-from PyQt4.QtCore import (SIGNAL, QObject, Qt, QDataStream, QVariant, QTimer,
-                          QPointF, pyqtSignal)
-from sqlalchemy import create_engine, MetaData, select
+from PySide.QtGui import *
+from PySide.QtCore import Qt
+from sqlalchemy import create_engine, MetaData
 
 from joinlist import JoinList
 from scene import Scene
@@ -15,117 +14,99 @@ meta.reflect(bind=engine)
 
 
 class MainWindow(QMainWindow):
+    """The main application window."""
 
     def __init__(self):
+        """Initialize."""
         QMainWindow.__init__(self)
-
-        # menu
-        filemenu = self.menuBar().addMenu('&File')
-        newquery = filemenu.addAction('&New Query')
-        quit_ = filemenu.addAction('&Quit')
-        QObject.connect(newquery, SIGNAL('triggered()'), self.newquery)
-        QObject.connect(quit_, SIGNAL('triggered()'), sys.exit)
 
         # graphics view
         self.scene = Scene()
         graph = QGraphicsView(self.scene)
-        QObject.connect(self.scene, SIGNAL('selectionChanged()'), self.on_add)
+        self.scene.query_changed.connect(self.query_change)
+        self.scene.table_changed.connect(self.table_change)
 
         # table dock
-        self.table = QTableWidget(1, 1)
-        self.table.setMinimumHeight(100)
-        table_dock = QDockWidget('Results')
-        table_dock.setWidget(self.table)
+        result_dock = QDockWidget('Results')
+        self.result_table = QTableWidget(1, 1)
+        self.result_table.setMinimumHeight(100)
+        result_dock.setWidget(self.result_table)
 
         # query dock
         query_dock = QDockWidget('Query')
-        self.text_edit = QPlainTextEdit()
-        self.text_edit.setReadOnly(True)
-        query_dock.setWidget(self.text_edit)
+        self.query_view = QPlainTextEdit()
+        self.query_view.setReadOnly(True)
+        query_dock.setWidget(self.query_view)
 
         # constraint dock
         constraint_dock = QDockWidget('Constraints')
         self.constraints = QPlainTextEdit()
         constraint_dock.setWidget(self.constraints)
+        self.constraints.textChanged.connect(self.set_constraints)
 
-        # join dock
-        items = (QListWidgetItem(x) for x in meta.tables.keys())
-        self.joins = JoinList(items, meta)
+        # joins dock
         join_dock = QDockWidget('Joins')
+        items = meta.tables.keys()
+        self.joins = JoinList(items, meta)
         join_dock.setWidget(self.joins)
 
-        self.addDockWidget(Qt.BottomDockWidgetArea, table_dock)
+        # menu
+        filemenu = self.menuBar().addMenu('&File')
+        newquery = QAction('&New Query', filemenu)
+        quit_ = QAction('&Quit', filemenu)
+        filemenu.addAction(newquery)
+        filemenu.addAction(quit_)
+        newquery.triggered.connect(self.scene.reset_scene)
+        quit_.triggered.connect(sys.exit)
+
+        # layout
+        self.addDockWidget(Qt.BottomDockWidgetArea, result_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, query_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, constraint_dock)
-        self.tabifyDockWidget(table_dock, query_dock)
+        self.tabifyDockWidget(result_dock, query_dock)
         self.tabifyDockWidget(query_dock, constraint_dock)
-        table_dock.raise_()
+        result_dock.raise_()
         self.addDockWidget(Qt.LeftDockWidgetArea, join_dock)
-
         self.setCentralWidget(graph)
 
+    def table_change(self, name):
+        """When the table changes, set the filters."""
+        self.joins.set_table(name)
 
-    def newquery(self):
-        """Click File->New Query"""
-        self.scene.clear()
-        Table.alias_dict = {}
+    def query_change(self):
+        """When the query changes, run the query and show results.
 
-    def join(self, query, table):
-        for child in table.children:
-            query = query.join(child.table)
-            query = self.join(query, child)
-        return query
-    def query(self, table):
+        This will clear the table and then add the results.  It also adds the
+        query string to the query view.
 
-        selected = self.scene.selectedItems()
-        if len(selected) == 0:
-            return
+        """
+        query = self.scene.query
 
-        col_lists = (x.table.c for x in selected)
-        cols = [y for x in col_lists for y in x]
-
-        parent = selected[0]
-        while parent:
-            found = parent
-            parent = getattr(parent, 'base_table', None)
-
-        base = found.table
-
-        constraints = self.constraints.toPlainText() or ''
-
-        # query = select(cols, constraints, from_obj=base)
-        query = select(cols, constraints, from_obj=self.join(base, found))
-        query = query.limit(100)
+        self.query_view.setPlainText(str(query))
 
         results = engine.execute(query)
         keys = results.keys()
-        self.table.clear()
-        self.table.setColumnCount(len(keys))
-        self.table.setRowCount(0)
+        self.result_table.clear()
+        self.result_table.setColumnCount(len(keys))
+        self.result_table.setRowCount(0)
 
         cols_set = False
         row = -1
         for row, result in enumerate(results):
-            self.table.setRowCount(row + 1)
+            self.result_table.setRowCount(row + 1)
             for column, data in enumerate(result):
-                self.table.setItem(row, column, QTableWidgetItem(str(data)))
+                self.result_table.setItem(row, column,
+                                          QTableWidgetItem(str(data)))
 
         if not cols_set:
-            self.table.setHorizontalHeaderLabels(list(keys))
+            self.result_table.setHorizontalHeaderLabels(list(keys))
 
-        self.text_edit.setPlainText(str(query))
-
-    def on_add(self):
-        items = self.scene.selectedItems()
-        if len(items) == 0:
-            return
-        name = items[0].name
-
-        table = meta.tables[name]
-        self.query(table)
-        self.joins.set_table(name)
+    def set_constraints(self):
+        """Update the query constraints when the constraint text changes."""
+        self.scene.constraints = self.constraints.toPlainText() or ''
 
 
+# Run the application
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MainWindow()

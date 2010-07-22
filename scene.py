@@ -1,10 +1,10 @@
 import random, math
 
-from PyQt4.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
+from PySide.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
                          QGraphicsPolygonItem, QGraphicsSimpleTextItem,
                          QGraphicsScene, QGraphicsItem)
-from PyQt4.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, pyqtSignal
-
+from PySide.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, Signal, QString
+from sqlalchemy import select
 
 
 
@@ -39,6 +39,7 @@ class Vector(object):
     @classmethod
     def random(cls):
         return cls(random.random(), random.random())
+
 
 class Spring(QGraphicsLineItem):
     """ A spring represents a connection (fk) between two tables."""
@@ -131,7 +132,7 @@ def start():
 
 class Mediator(QObject):
     """Only used for signals because QGraphicsRect doesn't inherit from QObject."""
-    table_move = pyqtSignal()
+    table_move = Signal()
 
 
 class Table(QGraphicsRectItem):
@@ -251,9 +252,14 @@ class Table(QGraphicsRectItem):
 
 class Scene(QGraphicsScene):
 
+    query_changed = Signal()
+    table_changed = Signal(QString)
+
     def __init__(self, parent=None):
         """Override scene to handle drag/drop."""
         QGraphicsScene.__init__(self, parent)
+        self.constraints = ''
+        self.selectionChanged.connect(self.on_selection_change)
 
     def addItem(self, widget):
         QGraphicsScene.addItem(self, widget)
@@ -268,7 +274,6 @@ class Scene(QGraphicsScene):
         return event.acceptProposedAction()
 
     def dropEvent(self, event):
-        print 'drop'
         event.acceptProposedAction()
         data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
         text = self.decode_data(data)[0][0].toString()
@@ -278,6 +283,65 @@ class Scene(QGraphicsScene):
             spring = Spring(items[0], item)
             QGraphicsScene.addItem(self, spring)
         self.addItem(item)
+
+    def reset_scene(self):
+        self.clear()
+        Table.alias_dict = {}
+
+    def get_root(self):
+        """Get the root table in the scene."""
+        selected = self.selectedItems()
+        parent = selected[0]
+        while parent:
+            found = parent
+            parent = getattr(parent, 'base_table', None)
+        return found
+
+    def get_columns(self):
+        """Get the columns to display.
+
+        The columns displayed are derived from the tables that are selected in
+        the scene.
+
+        """
+        selected = self.selectedItems()
+        col_lists = (x.table.c for x in selected)
+        return [y for x in col_lists for y in x]
+
+    def join(self, query, table):
+        """Recursively join all the tables in the scene.
+
+        This returns the joined sqlalchemy query.
+
+        """
+        for child in table.children:
+            query = query.join(child.table)
+            query = self.join(query, child)
+        return query
+
+    def get_query(self):
+        """Create sqlalchemy query based on the contents of the scene."""
+        root = self.get_root()
+        base = root.table
+        cols = self.get_columns()
+        query = select(cols, self.constraints, from_obj=self.join(base, root))
+        return query.limit(100)
+
+    def on_selection_change(self):
+        """Run a query based on the contents of the scene.
+
+        This only happens if it makes sense to do so.
+
+        """
+        items = self.selectedItems()
+        name = None
+        if len(items) == 0:
+            return
+        elif len(items) == 1:
+            name = items[0].name
+        self.query = self.get_query()
+        self.query_changed.emit()
+        self.table_changed.emit(name)
 
     def decode_data(self, bytearray):
 
