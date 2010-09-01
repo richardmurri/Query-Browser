@@ -1,11 +1,11 @@
-from PySide.QtGui import (QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel,
+from PyQt4.QtGui import (QWidget, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel,
                          QCheckBox, QListWidget, QListWidgetItem)
-from PySide.QtCore import Signal
+from PyQt4.QtCore import pyqtSignal
 
 
 class Filter(QWidget):
     """Abstract base class for filters."""
-    filter_changed = Signal()
+    filter_changed = pyqtSignal()
 
 
 class ListFilter(object):
@@ -65,7 +65,7 @@ class TextFilter(Filter):
 class FkFilter(QWidget):
     """Handle filtering of a list by matching foreign keys of the input."""
 
-    filter_changed = Signal()
+    filter_changed = pyqtSignal()
 
     def __init__(self, meta):
         """Create qt widget and attach handlers."""

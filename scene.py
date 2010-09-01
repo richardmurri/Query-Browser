@@ -1,9 +1,9 @@
 import random, math
 
-from PySide.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
+from PyQt4.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
                          QGraphicsPolygonItem, QGraphicsSimpleTextItem,
                          QGraphicsScene, QGraphicsItem)
-from PySide.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, Signal, QString
+from PyQt4.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, pyqtSignal, QString
 from sqlalchemy import select
 
 
@@ -132,7 +132,7 @@ def start():
 
 class Mediator(QObject):
     """Only used for signals because QGraphicsRect doesn't inherit from QObject."""
-    table_move = Signal()
+    table_move = pyqtSignal()
 
 
 class Table(QGraphicsRectItem):
@@ -252,8 +252,8 @@ class Table(QGraphicsRectItem):
 
 class Scene(QGraphicsScene):
 
-    query_changed = Signal()
-    table_changed = Signal(QString)
+    query_changed = pyqtSignal()
+    table_changed = pyqtSignal(QString)
 
     def __init__(self, parent=None):
         """Override scene to handle drag/drop."""

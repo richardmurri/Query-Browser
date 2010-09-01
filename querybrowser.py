@@ -1,8 +1,8 @@
 
 import sys
 
-from PySide.QtGui import *
-from PySide.QtCore import Qt
+from PyQt4.QtGui import *
+from PyQt4.QtCore import Qt
 from sqlalchemy import create_engine, MetaData
 
 from joinlist import JoinList
