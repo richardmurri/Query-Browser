@@ -88,13 +88,14 @@ class Relation(QGraphicsLineItem):
     constant = 100.0
     length = 1.0
 
-    def __init__(self, from_table, to_table):
+    def __init__(self, from_table, to_table, condition):
         QGraphicsLineItem.__init__(self)
         self.instances.append(self)
 
         # from/to table connections
         self.from_table = from_table
         self.to_table = to_table
+        self.condition = condition
         from_table.table_move.connect(self.update_spring)
         to_table.table_move.connect(self.update_spring)
 
@@ -344,10 +345,14 @@ class Scene(QGraphicsScene):
         event.acceptProposedAction()
         data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
         text = self.decode_data(data)[0][0].toString()
-        table = meta.tables[str(text)]
-        item = Table(table, Vector.random())
+        newtable = meta.tables[str(text)]
+        item = Table(newtable, Vector.random())
         if items:
-            spring = Relation(items[0], item)
+            try:
+                condition = items[0].table.join(newtable)
+            except:
+                condition = None
+            spring = Relation(items[0], item, condition)
             QGraphicsScene.addItem(self, spring)
         self.addItem(item)
 
@@ -387,10 +392,15 @@ class Scene(QGraphicsScene):
         """
         for relation in table.child_relations:
             child = relation.to_table
+
+            if relation.condition is None:
+                continue
+
             if relation.is_outer() or outer:
-                query = query.outerjoin(child.table)
+                query = query.outerjoin(child.table, relation.condition)
             else:
-                query = query.join(child.table)
+                query = query.join(child.table, relation.condition)
+
             query = self.join(query, child, relation.is_outer())
         return query
 
