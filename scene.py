@@ -30,6 +30,9 @@ class Vector(object):
     def __div__(self, value):
         return Vector(self.x / value, self.y / value)
 
+    def __neg__(self):
+        return self * -1
+
     def magnitude(self):
         return math.sqrt(self.x * self.x + self.y * self.y)
 
@@ -41,93 +44,80 @@ class Vector(object):
         return cls(random.random(), random.random())
 
 
-class Spring(QGraphicsLineItem):
+class ArrowPolygonItem(QGraphicsPolygonItem):
+
+    def __init__(self, parent):
+        points = QPolygonF()
+        for poly in (QPointF(7,0), QPointF(-7,7), QPointF(-5,2), QPointF(-11,2),
+                     QPointF(-11,-2), QPointF(-5,-2), QPointF(-7,-7)):
+            points.append(poly)
+        QGraphicsPolygonItem.__init__(self, points, parent)
+        self.setPen(Qt.darkCyan)
+        self.setBrush(Qt.cyan)
+        self.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
+
+    def update_position(self, point1, point2):
+
+        rise = point2.y - point1.y
+        run = point2.x - point1.x
+        self.setX((run / 2) + point1.x)
+        self.setY((rise / 2) + point1.y)
+        tan = math.degrees(math.atan2(rise, run))
+        self.setRotation(tan)
+
+
+class Relation(QGraphicsLineItem):
     """ A spring represents a connection (fk) between two tables."""
 
     instances = []
     constant = 100.0
     length = 1.0
 
-    def __init__(self, table1, table2):
-        self.table1 = table1
-        self.table2 = table2
-        table2.base_table = table1
-        table1.children.append(table2)
-        table1.table_move.connect(self.update_spring)
-        table2.table_move.connect(self.update_spring)
+    def __init__(self, from_table, to_table):
+        QGraphicsLineItem.__init__(self)
         self.instances.append(self)
 
-        QGraphicsLineItem.__init__(self)
+        # from/to table connections
+        self.from_table = from_table
+        self.to_table = to_table
+        from_table.table_move.connect(self.update_spring)
+        to_table.table_move.connect(self.update_spring)
 
+        # draw arrow
+        self.arrow = ArrowPolygonItem(self)
+
+        # set attributes
         pen = QPen()
         pen.setWidth(2)
-
-        points = QPolygonF()
-        for poly in (QPointF(7,0), QPointF(-7,7), QPointF(-5,2), QPointF(-11,2),
-                     QPointF(-11,-2), QPointF(-5,-2), QPointF(-7,-7)):
-            points.append(poly)
-
-        self.arrow = QGraphicsPolygonItem(points, self)
-        self.arrow.setBrush(Qt.cyan)
-        self.arrow.setPen(Qt.darkCyan)
-        self.arrow.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
-
         self.setPen(pen)
+
+        # update line/arrow position
         self.update_spring()
+
+        # move behind anything else
         self.setZValue(-1)
 
+        # want to get rid of these
+        to_table.base_table = from_table
+        from_table.children.append(to_table)
+
+
     def update_spring(self):
-        point1 = self.table1.point
-        point2 = self.table2.point
-
-        x1 = point1.x * zoom
-        y1 = point1.y * zoom
-        x2 = point2.x * zoom
-        y2 = point2.y * zoom
-        self.setLine(x1, y1, x2, y2)
-
-        rise = y2 - y1
-        run = x2 - x1
-        self.arrow.setX((run / 2)+ x1)
-        self.arrow.setY((rise / 2)+ y1)
-
-        tan = math.degrees(math.atan2(rise, run))
-        self.arrow.setRotation(tan)
+        zoom_point1 = self.from_table.point * zoom
+        zoom_point2 = self.to_table.point * zoom
+        self.setLine(zoom_point1.x, zoom_point1.y, zoom_point2.x, zoom_point2.y)
+        self.arrow.update_position(zoom_point1, zoom_point2)
 
     @classmethod
     def apply_hookes_law(cls):
         for spring in cls.instances:
-            d = spring.table2.point - spring.table1.point
-            displacement = spring.length - d.magnitude()
+            d = spring.to_table.point - spring.from_table.point
+            displacement = cls.length - d.magnitude()
             direction = d.normalize()
 
-            spring.table1.apply_force(direction * spring.constant * displacement * -0.5)
-            spring.table2.apply_force(direction * spring.constant * displacement * 0.5)
-
-
-timer = QTimer()
-def start():
-
-    if timer.isActive():
-        return
-
-    def run1():
-        points = Table.instances
-        Table.apply_coulombs_law()
-        Spring.apply_hookes_law()
-        Table.update_velocity(0.05)
-        Table.update_position(0.05)
-
-        k = 0.0
-        for point in Table.instances:
-            speed = point.velocity.magnitude()
-            k += speed * speed
-
-        if k < 0.01:
-            timer.stop()
-
-    timer.timeout.connect(run1)
-    timer.start(10)
+            force = direction * cls.constant * displacement * 0.5
+            spring.to_table.apply_force(force)
+            spring.from_table.apply_force(-force)
 
 
 class Mediator(QObject):
@@ -144,20 +134,21 @@ class Table(QGraphicsRectItem):
 
     @property
     def table_move(self):
+        """Mimic a signal on this class."""
         return self._mediator.table_move
 
-    def __init__(self, name, vector, mass=1.0):
+    def __init__(self, table, vector, mass=1.0):
         """Documentation here"""
-        self.name = str(name)
+
+        self.name = table.name
         self._mediator = Mediator()
 
         # layout widget
         x, y = vector.x, vector.y
-        text = QGraphicsSimpleTextItem('{0} as {1}'.format(name, self.alias))
+        text = QGraphicsSimpleTextItem('{0} as {1}'.format(self.name, self.alias))
         width = text.boundingRect().width()
         QGraphicsRectItem.__init__(self, x, y, width + 10, 22)
 
-        table = meta.tables[str(name)]
         self.table = table.alias(self.alias)
         self.base_table = None
         self.children = []
@@ -185,19 +176,17 @@ class Table(QGraphicsRectItem):
 
     @classmethod
     def apply_coulombs_law(cls):
-        for table1 in cls.instances:
-            for table2 in cls.instances:
-                if table1 is table2:
+        for from_table in cls.instances:
+            for to_table in cls.instances:
+                if from_table is to_table:
                     continue
-                d = table1.point - table2.point
+                d = from_table.point - to_table.point
                 distance = d.magnitude() + 1.0
                 direction = d.normalize()
 
-                af = direction * cls.repulsion
-                af2 = af / (distance * distance * 0.5)
-
-                table1.apply_force((direction * cls.repulsion) / (distance * distance * 0.5))
-                table2.apply_force((direction * cls.repulsion) / (distance * distance * -0.5))
+                force = (direction * cls.repulsion) / (distance * distance * 0.5)
+                from_table.apply_force(force)
+                to_table.apply_force(-force)
 
     @classmethod
     def update_velocity(cls, timestep):
@@ -245,10 +234,9 @@ class Table(QGraphicsRectItem):
     #     return QGraphicsRectItem.mouseMoveEvent(self, event)
 
     def itemChange(self, change, value):
-
-
         # print change, value
         return QGraphicsRectItem.itemChange(self, change, value)
+
 
 class Scene(QGraphicsScene):
 
@@ -258,14 +246,39 @@ class Scene(QGraphicsScene):
     def __init__(self, parent=None):
         """Override scene to handle drag/drop."""
         QGraphicsScene.__init__(self, parent)
-        self.constraints = ''
         self.selectionChanged.connect(self.on_selection_change)
+        self.timer = QTimer()
+        self.constraints = ''
 
     def addItem(self, widget):
         QGraphicsScene.addItem(self, widget)
         self.clearSelection()
         widget.setSelected(True)
-        start()
+        self.layout()
+
+    def layout(self):
+
+        # if the layout is still running, do nothing
+        if self.timer.isActive():
+            return
+        self.timer.timeout.connect(self.run_layout)
+        self.timer.start(10)
+
+    def run_layout(self):
+        points = Table.instances
+        Table.apply_coulombs_law()
+        Relation.apply_hookes_law()
+        Table.update_velocity(0.05)
+        Table.update_position(0.05)
+
+        k = 0.0
+        for point in Table.instances:
+            speed = point.velocity.magnitude()
+            k += speed * speed
+
+        if k < 0.01:
+            self.timer.stop()
+
 
     def dragEnterEvent(self, event):
         return event.acceptProposedAction()
@@ -277,10 +290,11 @@ class Scene(QGraphicsScene):
         event.acceptProposedAction()
         data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
         text = self.decode_data(data)[0][0].toString()
-        item = Table(text, Vector.random())
+        table = meta.tables[str(text)]
+        item = Table(table, Vector.random())
         items = self.selectedItems()
         if items:
-            spring = Spring(items[0], item)
+            spring = Relation(items[0], item)
             QGraphicsScene.addItem(self, spring)
         self.addItem(item)
 
@@ -344,6 +358,7 @@ class Scene(QGraphicsScene):
         self.table_changed.emit(name)
 
     def decode_data(self, bytearray):
+        """Handle drag/drop data."""
 
         data = []
         item = {}
