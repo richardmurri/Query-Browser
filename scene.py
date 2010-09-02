@@ -97,11 +97,6 @@ class Relation(QGraphicsLineItem):
         # move behind anything else
         self.setZValue(-1)
 
-        # want to get rid of these
-        to_table.base_table = from_table
-        from_table.children.append(to_table)
-
-
     def update_spring(self):
         zoom_point1 = self.from_table.point * zoom
         zoom_point2 = self.to_table.point * zoom
@@ -137,6 +132,18 @@ class Table(QGraphicsRectItem):
         """Mimic a signal on this class."""
         return self._mediator.table_move
 
+    @property
+    def parent(self):
+        parents = (x.from_table for x in Relation.instances if x.to_table is self)
+        try:
+            return parents.next()
+        except StopIteration:
+            return None
+
+    @property
+    def children(self):
+        return (x.to_table for x in Relation.instances if x.from_table is self)
+
     def __init__(self, table, vector, mass=1.0):
         """Documentation here"""
 
@@ -150,8 +157,6 @@ class Table(QGraphicsRectItem):
         QGraphicsRectItem.__init__(self, x, y, width + 10, 22)
 
         self.table = table.alias(self.alias)
-        self.base_table = None
-        self.children = []
 
         self.setBrush(Qt.cyan)
         self.setPen(Qt.darkCyan)
@@ -305,11 +310,14 @@ class Scene(QGraphicsScene):
     def get_root(self):
         """Get the root table in the scene."""
         selected = self.selectedItems()
-        parent = selected[0]
-        while parent:
-            found = parent
-            parent = getattr(parent, 'base_table', None)
-        return found
+        child = selected[0]
+        while 1:
+            parent = child.parent
+            if parent:
+                child = parent
+            else:
+                break
+        return child
 
     def get_columns(self):
         """Get the columns to display.
