@@ -18,23 +18,23 @@ class Vector(object):
         self.x = x
         self.y = y
 
-    def add(self, vector):
+    def __add__(self, vector):
         return Vector(self.x + vector.x, self.y + vector.y)
 
-    def subtract(self, vector):
+    def __sub__(self, vector):
         return Vector(self.x - vector.x, self.y - vector.y)
 
-    def multiply(self, value):
+    def __mul__(self, value):
         return Vector(self.x * value, self.y * value)
 
-    def divide(self, value):
+    def __div__(self, value):
         return Vector(self.x / value, self.y / value)
 
     def magnitude(self):
         return math.sqrt(self.x * self.x + self.y * self.y)
 
     def normalize(self):
-        return self.divide(self.magnitude())
+        return self / self.magnitude()
 
     @classmethod
     def random(cls):
@@ -97,12 +97,12 @@ class Spring(QGraphicsLineItem):
     @classmethod
     def apply_hookes_law(cls):
         for spring in cls.instances:
-            d = spring.table2.point.subtract(spring.table1.point)
+            d = spring.table2.point - spring.table1.point
             displacement = spring.length - d.magnitude()
             direction = d.normalize()
 
-            spring.table1.apply_force(direction.multiply(spring.constant * displacement * -0.5))
-            spring.table2.apply_force(direction.multiply(spring.constant * displacement * 0.5))
+            spring.table1.apply_force(direction * spring.constant * displacement * -0.5)
+            spring.table2.apply_force(direction * spring.constant * displacement * 0.5)
 
 
 timer = QTimer()
@@ -180,8 +180,8 @@ class Table(QGraphicsRectItem):
         self.instances.append(self)
 
     def apply_force(self, force):
-        af = force.divide(self.mass)
-        self.force = self.force.add(force.divide(self.mass))
+        af = force / self.mass
+        self.force = self.force + (force / self.mass)
 
     @classmethod
     def apply_coulombs_law(cls):
@@ -189,26 +189,26 @@ class Table(QGraphicsRectItem):
             for table2 in cls.instances:
                 if table1 is table2:
                     continue
-                d = table1.point.subtract(table2.point)
+                d = table1.point - table2.point
                 distance = d.magnitude() + 1.0
                 direction = d.normalize()
 
-                af = direction.multiply(cls.repulsion)
-                af2 = af.divide(distance * distance * 0.5)
+                af = direction * cls.repulsion
+                af2 = af / (distance * distance * 0.5)
 
-                table1.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * 0.5))
-                table2.apply_force(direction.multiply(cls.repulsion).divide(distance * distance * -0.5))
+                table1.apply_force((direction * cls.repulsion) / (distance * distance * 0.5))
+                table2.apply_force((direction * cls.repulsion) / (distance * distance * -0.5))
 
     @classmethod
     def update_velocity(cls, timestep):
         for table in cls.instances:
-            table.velocity = table.velocity.add(table.force.multiply(timestep)).multiply(cls.damping)
+            table.velocity = (table.velocity + table.force * timestep) * cls.damping
             table.force = Vector(0, 0)
 
     @classmethod
     def update_position(cls, timestep):
         for table in cls.instances:
-            table.point = table.point.add(table.velocity.multiply(timestep))
+            table.point = table.point + table.velocity * timestep
             table.setX(table.point.x)
             table.setY(table.point.y)
 
