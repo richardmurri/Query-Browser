@@ -112,6 +112,10 @@ class Relation(QGraphicsLineItem):
             spring.to_table.apply_force(force)
             spring.from_table.apply_force(-force)
 
+    @classmethod
+    def clear(cls):
+        cls.instances = []
+
 
 class Mediator(QObject):
     """Only used for signals because QGraphicsRect doesn't inherit from QObject."""
@@ -190,6 +194,11 @@ class Table(QGraphicsRectItem):
                 force = (direction * cls.repulsion) / (distance * distance * 0.5)
                 from_table.apply_force(force)
                 to_table.apply_force(-force)
+
+    @classmethod
+    def clear(cls):
+        cls.instances = []
+        cls.alias_dict = {}
 
     @classmethod
     def update_velocity(cls, timestep):
@@ -306,7 +315,8 @@ class Scene(QGraphicsScene):
 
     def reset_scene(self):
         self.clear()
-        Table.alias_dict = {}
+        Relation.clear()
+        Table.clear()
 
     def get_root(self):
         """Get the root table in the scene."""

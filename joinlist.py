@@ -156,3 +156,6 @@ class JoinList(QWidget):
         self.text_filter.edit.setText('')
         self.fk_filter.edit.setText(str(table))
 
+    def reset(self):
+        self.text_filter.edit.setText('')
+        self.fk_filter.edit.setText('')

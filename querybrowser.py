@@ -57,6 +57,7 @@ class MainWindow(QMainWindow):
         filemenu.addAction(newquery)
         filemenu.addAction(quit_)
         newquery.triggered.connect(self.scene.reset_scene)
+        newquery.triggered.connect(self.joins.reset)
         quit_.triggered.connect(sys.exit)
 
         # layout
