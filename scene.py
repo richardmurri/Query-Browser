@@ -379,7 +379,7 @@ class Scene(QGraphicsScene):
         col_lists = (x.table.c for x in selected)
         return [y for x in col_lists for y in x]
 
-    def join(self, query, table):
+    def join(self, query, table, outer=False):
         """Recursively join all the tables in the scene.
 
         This returns the joined sqlalchemy query.
@@ -387,11 +387,11 @@ class Scene(QGraphicsScene):
         """
         for relation in table.child_relations:
             child = relation.to_table
-            if relation.is_outer():
+            if relation.is_outer() or outer:
                 query = query.outerjoin(child.table)
             else:
                 query = query.join(child.table)
-            query = self.join(query, child)
+            query = self.join(query, child, relation.is_outer())
         return query
 
     def get_query(self):
