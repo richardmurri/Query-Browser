@@ -54,7 +54,7 @@ class ArrowPolygonItem(QGraphicsPolygonItem):
         QGraphicsPolygonItem.__init__(self, points, parent)
         self.setPen(Qt.darkCyan)
         self.setBrush(Qt.cyan)
-        self.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
+        # self.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
 
     def update_position(self, point1, point2):
 
@@ -91,13 +91,11 @@ class Relation(QGraphicsLineItem):
         pen.setWidth(2)
         self.setPen(pen)
 
-        # update line/arrow position
         self.update_spring()
-
-        # move behind anything else
         self.setZValue(-1)
 
     def update_spring(self):
+        """Update the position of the line and arrow."""
         zoom_point1 = self.from_table.point * zoom
         zoom_point2 = self.to_table.point * zoom
         self.setLine(zoom_point1.x, zoom_point1.y, zoom_point2.x, zoom_point2.y)
@@ -284,20 +282,21 @@ class Scene(QGraphicsScene):
         if k < 0.01:
             self.timer.stop()
 
-
     def dragEnterEvent(self, event):
+        if not self.selectedItems() and len(Table.instances) > 0:
+            return event.ignore()
         return event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
         return event.acceptProposedAction()
 
     def dropEvent(self, event):
+        items = self.selectedItems()
         event.acceptProposedAction()
         data = event.mimeData().data('application/x-qabstractitemmodeldatalist')
         text = self.decode_data(data)[0][0].toString()
         table = meta.tables[str(text)]
         item = Table(table, Vector.random())
-        items = self.selectedItems()
         if items:
             spring = Relation(items[0], item)
             QGraphicsScene.addItem(self, spring)
@@ -309,8 +308,8 @@ class Scene(QGraphicsScene):
 
     def get_root(self):
         """Get the root table in the scene."""
-        selected = self.selectedItems()
-        child = selected[0]
+        table = Table.instances[0]
+        child = table
         while 1:
             parent = child.parent
             if parent:
