@@ -2,8 +2,9 @@ import random, math
 
 from PyQt4.QtGui import (QGraphicsLineItem, QPen, QPolygonF, QGraphicsRectItem,
                          QGraphicsPolygonItem, QGraphicsSimpleTextItem,
-                         QGraphicsScene, QGraphicsItem)
-from PyQt4.QtCore import QPointF, Qt, QDataStream, QVariant, QTimer, QObject, pyqtSignal, QString
+                         QGraphicsScene, QGraphicsItem, QMenu, QAction,
+                         QActionGroup, QGraphicsSceneMouseEvent)
+from PyQt4.QtCore import QPointF, QPoint, Qt, QDataStream, QVariant, QTimer, QObject, pyqtSignal, QString
 from sqlalchemy import select
 
 
@@ -44,17 +45,27 @@ class Vector(object):
         return cls(random.random(), random.random())
 
 
+class ArrowMediator(QObject):
+    """Only used for signals because QGraphicsRect doesn't inherit from QObject."""
+    clicked = pyqtSignal(QGraphicsSceneMouseEvent)
+
+
 class ArrowPolygonItem(QGraphicsPolygonItem):
+
+    @property
+    def clicked(self):
+        return self._mediator.clicked
 
     def __init__(self, parent):
         points = QPolygonF()
+        self._mediator = ArrowMediator()
         for poly in (QPointF(7,0), QPointF(-7,7), QPointF(-5,2), QPointF(-11,2),
                      QPointF(-11,-2), QPointF(-5,-2), QPointF(-7,-7)):
             points.append(poly)
         QGraphicsPolygonItem.__init__(self, points, parent)
         self.setPen(Qt.darkCyan)
         self.setBrush(Qt.cyan)
-        # self.setFlag(QGraphicsPolygonItem.ItemIsSelectable, True)
+
 
     def update_position(self, point1, point2):
 
@@ -64,6 +75,10 @@ class ArrowPolygonItem(QGraphicsPolygonItem):
         self.setY((rise / 2) + point1.y)
         tan = math.degrees(math.atan2(rise, run))
         self.setRotation(tan)
+
+    def mousePressEvent(self, event):
+        self.clicked.emit(event)
+        event.ignore()
 
 
 class Relation(QGraphicsLineItem):
@@ -85,6 +100,7 @@ class Relation(QGraphicsLineItem):
 
         # draw arrow
         self.arrow = ArrowPolygonItem(self)
+        self.arrow.clicked.connect(self.change_settings)
 
         # set attributes
         pen = QPen()
@@ -93,6 +109,28 @@ class Relation(QGraphicsLineItem):
 
         self.update_spring()
         self.setZValue(-1)
+
+        # setup configuration menu
+        menu = QMenu()
+        join_action = QAction('Join', menu)
+        join_action.setCheckable(True)
+        join_action.setChecked(True)
+        outer_join_action = QAction('Outer Join', menu)
+        outer_join_action.setCheckable(True)
+        group = QActionGroup(menu)
+        group.addAction(join_action)
+        group.addAction(outer_join_action)
+        menu.addAction(join_action)
+        menu.addAction(outer_join_action)
+        self.join_action = join_action
+        self.outer_join_action = outer_join_action
+        self.menu = menu
+
+    def is_outer(self):
+        return not self.join_action.isChecked()
+
+    def change_settings(self, event):
+        self.menu.popup(event.screenPos())
 
     def update_spring(self):
         """Update the position of the line and arrow."""
@@ -143,8 +181,8 @@ class Table(QGraphicsRectItem):
             return None
 
     @property
-    def children(self):
-        return (x.to_table for x in Relation.instances if x.from_table is self)
+    def child_relations(self):
+        return (x for x in Relation.instances if x.from_table is self)
 
     def __init__(self, table, vector, mass=1.0):
         """Documentation here"""
@@ -347,8 +385,12 @@ class Scene(QGraphicsScene):
         This returns the joined sqlalchemy query.
 
         """
-        for child in table.children:
-            query = query.join(child.table)
+        for relation in table.child_relations:
+            child = relation.to_table
+            if relation.is_outer():
+                query = query.outerjoin(child.table)
+            else:
+                query = query.join(child.table)
             query = self.join(query, child)
         return query
 
