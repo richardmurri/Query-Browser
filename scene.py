@@ -367,14 +367,14 @@ class Scene(QGraphicsScene):
 
         """
         items = self.selectedItems()
-        name = None
         if len(items) == 0:
             return
         elif len(items) == 1:
             name = items[0].name
+            self.table_changed.emit(name)
         self.query = self.get_query()
         self.query_changed.emit()
-        self.table_changed.emit(name)
+
 
     def decode_data(self, bytearray):
         """Handle drag/drop data."""
