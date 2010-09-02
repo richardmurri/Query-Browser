@@ -283,7 +283,9 @@ class Scene(QGraphicsScene):
             self.timer.stop()
 
     def dragEnterEvent(self, event):
-        if not self.selectedItems() and len(Table.instances) > 0:
+
+        if len(self.selectedItems()) != 1 and \
+                len(Table.instances) > 0:
             return event.ignore()
         return event.acceptProposedAction()
 
