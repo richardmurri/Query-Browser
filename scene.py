@@ -397,9 +397,9 @@ class Scene(QGraphicsScene):
                 continue
 
             if relation.is_outer() or outer:
-                query = query.outerjoin(child.table, relation.condition)
+                query = query.outerjoin(child.table)
             else:
-                query = query.join(child.table, relation.condition)
+                query = query.join(child.table)
 
             query = self.join(query, child, relation.is_outer())
         return query
